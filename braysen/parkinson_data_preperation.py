@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
+import tensorflow_decision_forests as tfdf
 import math
 from scipy import stats
 
@@ -30,26 +31,39 @@ def prepare_dataset(train_proteins: pd.DataFrame, train_peptides: pd.DataFrame):
     
     # Merging
     pro_pep_df = df_protein.merge(df_peptide, on=["visit_id"], how="left")
-    
+    # pro_pep_df = pro_pep_df.to_excel("test.xlsx")
     return pro_pep_df
 
 def prepare_features(df: pd.DataFrame):
     features = [i for i in df.columns if i not in ["visit_id"]]
     features.append("visit_month")
 
+def kaggle_score_smape(A, F):
+    return 100/len(A) * np.sum(2 * np.abs(F - A) / (np.abs(A) + np.abs(F)))
 
+def train_test_data(dataset, test_ratio=0.30):
+  test_indices = np.random.rand(len(dataset)) < test_ratio
+  return dataset[~test_indices], dataset[test_indices]
 
 if __name__ == "__main__":
-    train_proteins = pd.read_csv("./train_proteins.csv")
-    train_peptides = pd.read_csv("./train_peptides.csv")
-    train_clinical = pd.read_csv("./train_clinical_data.csv")
+    train_proteins = pd.read_csv("../train_proteins.csv")
+    train_peptides = pd.read_csv("../train_peptides.csv")
+    train_clinical = pd.read_csv("../train_clinical_data.csv")
 
     df_protein_pepitide = prepare_dataset(train_proteins=train_proteins, train_peptides=train_peptides)
     df_ml_dataset = df_protein_pepitide.merge(train_clinical, on=["visit_id"], how="left")
-    df_ml_dataset.info(verbose=True)
-    print(df_ml_dataset.head())
+
+    # print(df_ml_dataset.head())
+    print(len(df_ml_dataset))
 
     FEATURES = prepare_features(df_protein_pepitide)
+
+    test_df, train_df = train_test_data(df_ml_dataset)
+
+    train_ds = tfdf.keras.pd_dataframe_to_tf_dataset(train_df, label="updrs_1", task = tfdf.keras.Task.REGRESSION)
+    valid_ds = tfdf.keras.pd_dataframe_to_tf_dataset(test_df, label="updrs_1", task = tfdf.keras.Task.REGRESSION)
+
+    tfdf.keras.get_all_models()
 
     plot_udprs(patient_id=4172, df=train_clinical)
 
