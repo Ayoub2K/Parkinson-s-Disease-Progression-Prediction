@@ -38,17 +38,17 @@ def prepare_features(df: pd.DataFrame):
     features = [i for i in df.columns if i not in ["visit_id"]]
     features.append("visit_month")
 
-def kaggle_score_smape(A, F):
-    return 100/len(A) * np.sum(2 * np.abs(F - A) / (np.abs(A) + np.abs(F)))
+def kaggle_score_smape(test_label_values: list, prediction_label_values: list):
+    return 100/len(test_label_values) * np.sum(2 * np.abs(prediction_label_values - test_label_values) / (np.abs(test_label_values) + np.abs(prediction_label_values)))
 
 def train_test_data(dataset, test_ratio=0.30):
   test_indices = np.random.rand(len(dataset)) < test_ratio
   return dataset[~test_indices], dataset[test_indices]
 
 if __name__ == "__main__":
-    train_proteins = pd.read_csv("../train_proteins.csv")
-    train_peptides = pd.read_csv("../train_peptides.csv")
-    train_clinical = pd.read_csv("../train_clinical_data.csv")
+    train_proteins = pd.read_csv("./train_proteins.csv")
+    train_peptides = pd.read_csv("./train_peptides.csv")
+    train_clinical = pd.read_csv("./train_clinical_data.csv")
 
     df_protein_pepitide = prepare_dataset(train_proteins=train_proteins, train_peptides=train_peptides)
     df_ml_dataset = df_protein_pepitide.merge(train_clinical, on=["visit_id"], how="left")
@@ -56,14 +56,30 @@ if __name__ == "__main__":
     # print(df_ml_dataset.head())
     print(len(df_ml_dataset))
 
+    df_ml_dataset = df_ml_dataset.dropna(subset=["updrs_1"])
+
     FEATURES = prepare_features(df_protein_pepitide)
 
     test_df, train_df = train_test_data(df_ml_dataset)
 
     train_ds = tfdf.keras.pd_dataframe_to_tf_dataset(train_df, label="updrs_1", task = tfdf.keras.Task.REGRESSION)
-    valid_ds = tfdf.keras.pd_dataframe_to_tf_dataset(test_df, label="updrs_1", task = tfdf.keras.Task.REGRESSION)
+    test_ds = tfdf.keras.pd_dataframe_to_tf_dataset(test_df, label="updrs_1", task = tfdf.keras.Task.REGRESSION)
 
-    tfdf.keras.get_all_models()
+    random_forest = tfdf.keras.GradientBoostedTreesModel(task = tfdf.keras.Task.REGRESSION, verbose=0, max_depth=5, num_trees=200)
+    random_forest.compile(metrics=["mse"])
+    
+    # Train the model.
+    random_forest.fit(x=train_ds)
 
-    plot_udprs(patient_id=4172, df=train_clinical)
+    inspector = random_forest.make_inspector()
+    inspector.evaluation()
+    evaluation = random_forest.evaluate(x=test_ds,return_dict=True)
+
+    print(f"mse: {evaluation['mse']}")
+
+    preds = random_forest.predict(test_ds)
+
+    smape = kaggle_score_smape(test_df["updrs_1"].values.tolist(), preds.flatten())
+
+    print(f"smape: {smape}")
 
