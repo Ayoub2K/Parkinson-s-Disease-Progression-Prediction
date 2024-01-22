@@ -84,53 +84,37 @@ if __name__ == "__main__":
 
     FEATURES = prepare_features(df_protein_pepitide)
 
-    MSE_SCORES = []
-    LOWEST_MSE_FEATURES = []
+    feature_list = FEATURES.copy()
+    feature_list.append("updrs_1")
 
-    for i in range(100):
-        feature_list = FEATURES.copy()
-        feature_list = random.sample(feature_list, round(len(feature_list) / 8))
-        feature_list.append("updrs_1")
+    test_df, train_df = train_test_data(df_ml_dataset[feature_list], test_ratio=0.2)
 
-        test_df, train_df = train_test_data(df_ml_dataset[feature_list])
-
-        train_ds = tfdf.keras.pd_dataframe_to_tf_dataset(train_df, label="updrs_1", task = tfdf.keras.Task.REGRESSION)
-        test_ds = tfdf.keras.pd_dataframe_to_tf_dataset(test_df, label="updrs_1", task = tfdf.keras.Task.REGRESSION)
+    train_ds = tfdf.keras.pd_dataframe_to_tf_dataset(train_df, label="updrs_1", task = tfdf.keras.Task.REGRESSION)
+    test_ds = tfdf.keras.pd_dataframe_to_tf_dataset(test_df, label="updrs_1", task = tfdf.keras.Task.REGRESSION)
 
 
-        random_forest = tfdf.keras.GradientBoostedTreesModel(
-            task = tfdf.keras.Task.REGRESSION, 
-            verbose=0, 
-            max_depth=10, 
-            num_trees=300, 
-            num_threads=32,
-            growing_strategy="BEST_FIRST_GLOBAL", 
-            max_num_nodes=10**6)
-        
-        random_forest.compile(metrics=["mse"])
-        
-        # Train the model.
-        random_forest.fit(x=train_ds)
-
-        inspector = random_forest.make_inspector()
-        inspector.evaluation()
-        evaluation = random_forest.evaluate(x=test_ds,return_dict=True)
-
-        print(f"mse: {evaluation['mse']}")
-        if len(MSE_SCORES) > 0 and evaluation['mse'] < min(MSE_SCORES):
-            LOWEST_MSE_FEATURES = feature_list
-            
-        MSE_SCORES.append(evaluation['mse'])
-        print(LOWEST_MSE_FEATURES)
-
-
-        preds = random_forest.predict(test_ds)
-
-        smape = kaggle_score_smape(test_df["updrs_1"].values.tolist(), preds.flatten())
-
-        print(f"smape: {smape}")
+    random_forest = tfdf.keras.RandomForestModel(
+        task = tfdf.keras.Task.REGRESSION, 
+        verbose=0, 
+        max_depth=10, 
+        num_trees=400)
     
-    print(MSE_SCORES)
-    print(f" lowest mse: {min(MSE_SCORES)}")
-    print(LOWEST_MSE_FEATURES)
+    random_forest.compile(metrics=["mse"])
+    
+    # Train the model.
+    random_forest.fit(x=train_ds)
+
+    inspector = random_forest.make_inspector()
+    inspector.evaluation()
+    evaluation = random_forest.evaluate(x=test_ds,return_dict=True)
+
+    print(f"mse: {evaluation['mse']}")
+    preds = random_forest.predict(test_ds)
+    print(preds)
+
+    smape = kaggle_score_smape(test_df["updrs_1"].values.tolist(), preds.flatten())
+
+    print(f"smape: {smape}")
+
+
 

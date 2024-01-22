@@ -1,12 +1,14 @@
 import tensorflow as tf
+from tensorflow import keras
+from keras import optimizers
+from keras import losses
+from keras import layers
+from keras import Sequential
+
 import matplotlib.pyplot as plt
-import seaborn as sns
 import pandas as pd
 import numpy as np
-import tensorflow_decision_forests as tfdf
-import math
-from scipy import stats
-import random
+from sklearn.model_selection import train_test_split
 
 def plot_udprs(patient_id: int, df: pd.DataFrame):
     df = df[df["patient_id"] == patient_id]
@@ -75,62 +77,44 @@ if __name__ == "__main__":
 
     df_protein_pepitide = prepare_dataset(train_proteins=train_proteins, train_peptides=train_peptides)
     df_ml_dataset = df_protein_pepitide.merge(train_clinical, on=["visit_id"], how="left")
-    df_protein_pepitide.info(verbose=True)
    
-    # print(df_ml_dataset.head())
-    print(len(df_ml_dataset))
-
-    df_ml_dataset = df_ml_dataset.dropna(subset=["updrs_1"])
 
     FEATURES = prepare_features(df_protein_pepitide)
-
-    MSE_SCORES = []
-    LOWEST_MSE_FEATURES = []
-
-    for i in range(100):
-        feature_list = FEATURES.copy()
-        feature_list = random.sample(feature_list, round(len(feature_list) / 8))
-        feature_list.append("updrs_1")
-
-        test_df, train_df = train_test_data(df_ml_dataset[feature_list])
-
-        train_ds = tfdf.keras.pd_dataframe_to_tf_dataset(train_df, label="updrs_1", task = tfdf.keras.Task.REGRESSION)
-        test_ds = tfdf.keras.pd_dataframe_to_tf_dataset(test_df, label="updrs_1", task = tfdf.keras.Task.REGRESSION)
+    feature_list = FEATURES.copy()
 
 
-        random_forest = tfdf.keras.GradientBoostedTreesModel(
-            task = tfdf.keras.Task.REGRESSION, 
-            verbose=0, 
-            max_depth=10, 
-            num_trees=300, 
-            num_threads=32,
-            growing_strategy="BEST_FIRST_GLOBAL", 
-            max_num_nodes=10**6)
-        
-        random_forest.compile(metrics=["mse"])
-        
-        # Train the model.
-        random_forest.fit(x=train_ds)
+    df_ml_dataset = df_ml_dataset.dropna(subset=["updrs_4"])
+    df_ml_dataset = df_ml_dataset.fillna(0)
 
-        inspector = random_forest.make_inspector()
-        inspector.evaluation()
-        evaluation = random_forest.evaluate(x=test_ds,return_dict=True)
+    x = df_ml_dataset[feature_list]
+    y = df_ml_dataset["updrs_4"]
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2)
 
-        print(f"mse: {evaluation['mse']}")
-        if len(MSE_SCORES) > 0 and evaluation['mse'] < min(MSE_SCORES):
-            LOWEST_MSE_FEATURES = feature_list
-            
-        MSE_SCORES.append(evaluation['mse'])
-        print(LOWEST_MSE_FEATURES)
-
-
-        preds = random_forest.predict(test_ds)
-
-        smape = kaggle_score_smape(test_df["updrs_1"].values.tolist(), preds.flatten())
-
-        print(f"smape: {smape}")
+    model = Sequential(
+    [
+        layers.Dense(64, activation="tanh", name="layer1"),   
+        layers.Dense(64, activation="tanh", name="layer2"),   
+        layers.Dense(64, activation="tanh", name="layer3"),   
+        layers.Dense(64, activation="tanh", name="layer4"),   
+        layers.Dense(1),
+    ])
     
-    print(MSE_SCORES)
-    print(f" lowest mse: {min(MSE_SCORES)}")
-    print(LOWEST_MSE_FEATURES)
+    model.compile(
+        optimizer=optimizers.Adam(),
+        loss=losses.MeanSquaredError().name,
+        metrics=[losses.MeanSquaredError().name])
+    
+    model.fit(
+        x_train,
+        y_train,
+        epochs=10, 
+        validation_data=(x_test, y_test)
+        )
+
+    print(model.evaluate(x_test, y_test))
+    predictions = model.predict(x_test)
+    smape = kaggle_score_smape(y_test.values.tolist(), predictions.flatten())
+
+    print(f"smape: {smape}")
+
 
