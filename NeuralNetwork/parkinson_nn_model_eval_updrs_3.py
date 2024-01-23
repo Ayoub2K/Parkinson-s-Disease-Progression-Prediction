@@ -22,16 +22,19 @@ def plot_udprs(patient_id: int, df: pd.DataFrame):
     ax.legend()
     plt.show()
 
-def prepare_dataset_peptide(train_peptides: pd.DataFrame):
+def prepare_dataset(train_proteins: pd.DataFrame, train_peptides: pd.DataFrame):
 
     # Grouping 
+    df_protein_grouped = train_proteins.groupby(["visit_id","UniProt"])["NPX"].mean().reset_index()
     df_peptide_grouped = train_peptides.groupby(["visit_id","Peptide"])["PeptideAbundance"].mean().reset_index()
 
     # Pivoting
+    df_protein = df_protein_grouped.pivot(index="visit_id", columns="UniProt", values="NPX").rename_axis(columns=None).reset_index()
     df_peptide = df_peptide_grouped.pivot(index="visit_id", columns="Peptide", values="PeptideAbundance").rename_axis(columns=None).reset_index()
     
     # Merging
-    return df_peptide
+    pro_pep_df = df_protein.merge(df_peptide, on=["visit_id"], how="left")
+    return pro_pep_df
 
 def prepare_features(df: pd.DataFrame):
     features = [i for i in df.columns if i not in ["visit_id"]]
